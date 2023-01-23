@@ -1,9 +1,7 @@
 package entviz
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -20,6 +18,7 @@ import (
 	"entgo.io/ent/dialect/sql/schema"
 	"entgo.io/ent/entc"
 	"entgo.io/ent/entc/gen"
+	"github.com/Khan/genqlient/graphql"
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
@@ -27,18 +26,18 @@ import (
 )
 
 // ParseDevURL parses the devURL and returns the Ent dialect as well the Atlas driver name.
-func ParseDevURL(devURL string) (string, string, error) {
+func ParseDevURL(devURL string) (string, Driver, error) {
 	parsed, err := url.Parse(devURL)
 	if err != nil {
 		return "", "", err
 	}
 	switch strings.ToLower(parsed.Scheme) {
 	case "sqlite", "sqlite3":
-		return dialect.SQLite, "SQLITE", nil
+		return dialect.SQLite, DriverSqlite, nil
 	case "mysql":
-		return dialect.MySQL, "MYSQL", nil
+		return dialect.MySQL, DriverMysql, nil
 	case "postgres":
-		return dialect.Postgres, "POSTGRESQL", nil
+		return dialect.Postgres, DriverPostgresql, nil
 	}
 	return "", "", fmt.Errorf("unknow dialect: %s", parsed.Scheme)
 }
@@ -126,7 +125,7 @@ func ShareWithHttpClient(httpClient *http.Client) ShareOption {
 }
 
 // Share create and returns an Atlas Cloud Explore link for the given HCL document.
-func Share(ctx context.Context, hclDocument []byte, driverName string, opts ...ShareOption) (string, error) {
+func Share(ctx context.Context, hclDocument []byte, driver Driver, opts ...ShareOption) (string, error) {
 	shareOpts := shareOpts{
 		endpoint:   "https://gh.atlasgo.cloud/api/query",
 		httpClient: &http.Client{Timeout: 60 * time.Second},
@@ -138,100 +137,28 @@ func Share(ctx context.Context, hclDocument []byte, driverName string, opts ...S
 	if err != nil {
 		return "", fmt.Errorf("parsing endpoint: %w", err)
 	}
-	visualize, err := makeRequest[visualizeResponse](ctx, shareOpts.httpClient, shareOpts.endpoint, gqlRequest{
-		Query: visualizeMutation,
-		Variables: map[string]any{
-			"text":   string(hclDocument),
-			"driver": driverName,
-		},
-	})
+	gql := graphql.NewClient(shareOpts.endpoint, &entvizDo{httpClient: shareOpts.httpClient})
+	visualize, err := VisualizeMutation(ctx, gql, string(hclDocument), driver)
 	if err != nil {
 		return "", fmt.Errorf("visualize request: %w", err)
 	}
-	share, err := makeRequest[shareResponse](ctx, shareOpts.httpClient, shareOpts.endpoint, gqlRequest{
-		Query: shareVisualizationMutation,
-		Variables: map[string]any{
-			"extID": visualize.Data.Visualize.Node.ExtID,
-		},
-	})
+	share, err := ShareVisualizationMutation(ctx, gql, visualize.Visualize.Node.ExtID)
 	if err != nil {
 		return "", fmt.Errorf("share request: %w", err)
 	}
-	if !share.Data.ShareVisualization.Success {
-		return "", fmt.Errorf("could not share the visualization: %s", visualize.Data.Visualize.Node.ExtID)
+	if !share.ShareVisualization.Success {
+		return "", fmt.Errorf("could not share the visualization: %s", visualize.Visualize.Node.ExtID)
 	}
-	return fmt.Sprintf("%s://%s/explore/%s", u.Scheme, u.Host, visualize.Data.Visualize.Node.ExtID), nil
+	return fmt.Sprintf("%s://%s/explore/%s", u.Scheme, u.Host, visualize.Visualize.Node.ExtID), nil
 }
 
-// makeRequest makes a GraphQL request using the provided httpClient and endpoint.
-func makeRequest[T any](ctx context.Context, httpClient *http.Client, endpoint string, r gqlRequest) (gqlResponse[T], error) {
-	var (
-		body    bytes.Buffer
-		gqlResp gqlResponse[T]
-	)
-	if err := json.NewEncoder(&body).Encode(r); err != nil {
-		return gqlResp, fmt.Errorf("encoding gqlRequest: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &body)
-	if err != nil {
-		return gqlResp, fmt.Errorf("creating http request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", userAgent)
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return gqlResp, fmt.Errorf("making http request: %w", err)
-	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusOK:
-	case http.StatusTooManyRequests:
-		return gqlResp, fmt.Errorf("rate limited, try again in a few minutes")
-	default:
-		return gqlResp, fmt.Errorf("status code: %w", err)
-	}
-	if err = json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
-		return gqlResp, fmt.Errorf("decoding gqlResponse: %w", err)
-	}
-	return gqlResp, nil
+// entvizDo implements graphql.Doer and sets
+// the userAgent on each request.
+type entvizDo struct {
+	httpClient *http.Client
 }
 
-const (
-	visualizeMutation = `mutation VisualizeMutation($text: String!, $driver: Driver!) {
-  visualize(input: { text: $text, type: HCL, driver: $driver }) {
-    node {
-      extID
-    }
-  }
-}
-`
-	shareVisualizationMutation = `mutation ShareVisualizationMutation($extID: String!) {
-  shareVisualization(input: { fromID: $extID }) {
-    success
-  }
-}
-`
-)
-
-type gqlRequest struct {
-	Query     string         `json:"query"`
-	Variables map[string]any `json:"variables"`
-}
-
-type gqlResponse[T any] struct {
-	Data T `json:"data"`
-}
-
-type visualizeResponse struct {
-	Visualize struct {
-		Node struct {
-			ExtID string `json:"extID"`
-		} `json:"node"`
-	} `json:"visualize"`
-}
-
-type shareResponse struct {
-	ShareVisualization struct {
-		Success bool `json:"success"`
-	} `json:"shareVisualization"`
+func (e *entvizDo) Do(r *http.Request) (*http.Response, error) {
+	r.Header.Set("User-Agent", userAgent)
+	return e.httpClient.Do(r)
 }

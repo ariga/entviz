@@ -1,0 +1,13 @@
+mutation VisualizeMutation($text: String!, $driver: Driver!) {
+  visualize(input: { text: $text, type: HCL, driver: $driver }) {
+    node {
+      extID
+    }
+  }
+}
+
+mutation ShareVisualizationMutation($extID: String!) {
+  shareVisualization(input: { fromID: $extID }) {
+    success
+  }
+}

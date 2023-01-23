@@ -1,0 +1,37 @@
+type Mutation {
+  shareVisualization(input: ShareVisualizationInput!): ShareVisualizationPayload!
+  visualize(input: VisualizeInput!): VisualizationPayload!
+}
+
+input VisualizeInput {
+  text: String!
+  driver: Driver!
+  type: FormatType = HCL
+}
+
+enum Driver {
+  SQLITE
+  MYSQL
+  POSTGRESQL
+}
+
+enum FormatType {
+  HCL
+}
+
+type ShareVisualizationPayload {
+  success: Boolean!
+}
+
+input ShareVisualizationInput {
+  fromID: String!
+  toID: String
+}
+
+type VisualizationPayload {
+  node: Visualization
+}
+
+type Visualization {
+  extID: String!
+}

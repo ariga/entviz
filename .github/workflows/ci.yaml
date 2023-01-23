@@ -4,14 +4,11 @@ on: [ push, pull_request ]
 jobs:
   lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go: [ 1.19 ]
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-go@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
         with:
-          go-version: ${{ matrix.go }}
+          go-version: '1.19.5'
       - name: Run linters
         uses: golangci/golangci-lint-action@v3.3.1
         with:
@@ -19,19 +16,14 @@ jobs:
           args: --timeout 3m
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go: [ 1.19 ]
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-go@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
         with:
-          go-version: ${{ matrix.go }}
-      - uses: actions/cache@v2
+          go-version: '1.19.5'
+      - uses: actions/cache@v3
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+          path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
@@ -39,9 +31,6 @@ jobs:
         run: go test -race ./internal/entviz/...
   integration:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go: [ 1.19 ]
     services:
       mysql:
         image: mysql
@@ -69,17 +58,39 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-go@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
         with:
-          go-version: ${{ matrix.go }}
-      - uses: actions/cache@v2
+          go-version: '1.19.5'
+      - uses: actions/cache@v3
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
+          path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
       - name: Run tests
         run: go test -race ./internal/integration/...
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '1.19.5'
+      - uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Run go generate
+        run: go generate ./...
+      - name: Check generated files
+        run: |
+          status=$(git status --porcelain)
+          if [ -n "$status" ]; then
+            echo "you need to run 'go generate ./...' and commit the changes"
+            echo "$status"
+            git --no-pager diff
+            exit 1
+          fi
