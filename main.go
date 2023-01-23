@@ -29,7 +29,7 @@ func main() {
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 	flag.Parse()
 	schemaPath := flag.Arg(0)
-	if flag.Arg(0) == "" {
+	if schemaPath == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -38,7 +38,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: invalid dev-url: %v\n", err)
 		os.Exit(1)
 	}
-	hcl, err := entviz.GenerateHCLFromEntSchema(ctx, entviz.GenerateOptions{
+	hcl, err := entviz.HCL(ctx, entviz.HCLOptions{
 		SchemaPath:     schemaPath,
 		Dialect:        parsedDialect,
 		DevURL:         devURL,
@@ -48,7 +48,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	link, err := entviz.ShareHCL(ctx, hcl, atlasDriverName)
+	link, err := entviz.Share(ctx, hcl, atlasDriverName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)

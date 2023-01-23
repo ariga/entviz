@@ -1,4 +1,5 @@
 # entviz
+
 Visualize Ent schemas with beautiful ERDs on atlasgo.cloud
 
 ## Usage
@@ -19,17 +20,17 @@ Flags:
 
 ## Example
 
-1. Share Ent schema using `SQLite` dev database.
+Share Ent schema using `SQLite` dev database.
+
 ```shell
-go run -mod=mod ariga.io/entviz ./ent/schema
+❯ go run -mod=mod ariga.io/entviz ./ent/schema
+Here is a public link to your schema visualization
+        https://gh.atlasgo.cloud/explore/c3aa3f24
 ```
 
-2. Share Ent schema using `MySQL` dev database.
-```shell
-go run -mod=mod ariga.io/entviz -dev-url "mysql://user:pass@localhost:3306/database" ./ent/schema
-```
+For `MySQL` or `Postgres` check the examples below:
 
-3. Share Ent schema using `Postgres` dev database.
 ```shell
-go run -mod=mod ariga.io/entviz -dev-url "postgres://postgres:pass@localhost:5432/database?sslmode=disable" ./ent/schema
+❯ go run -mod=mod ariga.io/entviz -dev-url "mysql://user:pass@localhost:3306/database" ./ent/schema
+❯ go run -mod=mod ariga.io/entviz -dev-url "postgres://postgres:pass@localhost:5432/database?sslmode=disable" ./ent/schema
 ```

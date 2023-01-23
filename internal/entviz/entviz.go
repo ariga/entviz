@@ -13,10 +13,9 @@ import (
 
 	_ "ariga.io/atlas/sql/mysql"
 	_ "ariga.io/atlas/sql/postgres"
-	_ "ariga.io/atlas/sql/sqlite"
-
 	atlas "ariga.io/atlas/sql/schema"
 	"ariga.io/atlas/sql/sqlclient"
+	_ "ariga.io/atlas/sql/sqlite"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql/schema"
 	"entgo.io/ent/entc"
@@ -27,38 +26,54 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const userAgent = "EntViz"
+// ParseDevURL parses the devURL and returns the Ent dialect as well the Atlas driver name.
+func ParseDevURL(devURL string) (string, string, error) {
+	parsed, err := url.Parse(devURL)
+	if err != nil {
+		return "", "", err
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "sqlite", "sqlite3":
+		return dialect.SQLite, "SQLITE", nil
+	case "mysql":
+		return dialect.MySQL, "MYSQL", nil
+	case "postgres":
+		return dialect.Postgres, "POSTGRESQL", nil
+	}
+	return "", "", fmt.Errorf("unknow dialect: %s", parsed.Scheme)
+}
 
 var (
 	errSkip = errors.New("skip")
 )
 
-type GenerateOptions struct {
+// HCLOptions are the options that can be provided to HCL.
+type HCLOptions struct {
 	SchemaPath     string
 	Dialect        string
 	DevURL         string
 	GlobalUniqueID bool
 }
 
-// GenerateHCLFromEntSchema generates an Atlas HCL document from an Ent schema.
+// HCL generates an Atlas HCL document from an Ent schema.
 // Most of the code below is taken from https://github.com/rotemtam/entprint.
-func GenerateHCLFromEntSchema(ctx context.Context, genOpts GenerateOptions) ([]byte, error) {
-	graph, err := entc.LoadGraph(genOpts.SchemaPath, &gen.Config{})
+func HCL(ctx context.Context, hclOpts HCLOptions) ([]byte, error) {
+	graph, err := entc.LoadGraph(hclOpts.SchemaPath, &gen.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("loading schema: %w", err)
 	}
 	var sch *atlas.Schema
 	opts := []schema.MigrateOption{
-		schema.WithGlobalUniqueID(genOpts.GlobalUniqueID),
+		schema.WithGlobalUniqueID(hclOpts.GlobalUniqueID),
 		schema.WithDiffHook(func(differ schema.Differ) schema.Differ {
 			return schema.DiffFunc(func(current, desired *atlas.Schema) ([]atlas.Change, error) {
 				sch = desired
 				return nil, errSkip
 			})
 		}),
-		schema.WithDialect(genOpts.Dialect),
+		schema.WithDialect(hclOpts.Dialect),
 	}
-	mig, err := schema.NewMigrateURL(genOpts.DevURL, opts...)
+	mig, err := schema.NewMigrateURL(hclOpts.DevURL, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("creating migration engine: %w", err)
 	}
@@ -69,7 +84,7 @@ func GenerateHCLFromEntSchema(ctx context.Context, genOpts GenerateOptions) ([]b
 	if err := mig.Create(ctx, tbl...); err != nil && !errors.Is(err, errSkip) {
 		return nil, fmt.Errorf("creating schema: %w", err)
 	}
-	drv, err := sqlclient.Open(ctx, genOpts.DevURL)
+	drv, err := sqlclient.Open(ctx, hclOpts.DevURL)
 	if err != nil {
 		return nil, fmt.Errorf("opening sql client: %w", err)
 	}
@@ -86,6 +101,8 @@ func GenerateHCLFromEntSchema(ctx context.Context, genOpts GenerateOptions) ([]b
 	}
 	return spec, nil
 }
+
+const userAgent = "EntViz"
 
 type shareOpts struct {
 	endpoint   string
@@ -108,10 +125,10 @@ func ShareWithHttpClient(httpClient *http.Client) ShareOption {
 	}
 }
 
-// ShareHCL create and returns an Atlas Cloud Explore link for the given HCL document.
-func ShareHCL(ctx context.Context, hclDocument []byte, driverName string, opts ...ShareOption) (string, error) {
+// Share create and returns an Atlas Cloud Explore link for the given HCL document.
+func Share(ctx context.Context, hclDocument []byte, driverName string, opts ...ShareOption) (string, error) {
 	shareOpts := shareOpts{
-		endpoint:   "https://gh.ariga.cloud/api/query",
+		endpoint:   "https://gh.atlasgo.cloud/api/query",
 		httpClient: &http.Client{Timeout: 60 * time.Second},
 	}
 	for _, opt := range opts {
@@ -143,7 +160,7 @@ func ShareHCL(ctx context.Context, hclDocument []byte, driverName string, opts .
 	if !share.Data.ShareVisualization.Success {
 		return "", fmt.Errorf("could not share the visualization: %s", visualize.Data.Visualize.Node.ExtID)
 	}
-	return fmt.Sprintf("https://%s/explore/%s", u.Host, visualize.Data.Visualize.Node.ExtID), nil
+	return fmt.Sprintf("%s://%s/explore/%s", u.Scheme, u.Host, visualize.Data.Visualize.Node.ExtID), nil
 }
 
 // makeRequest makes a GraphQL request using the provided httpClient and endpoint.
@@ -177,23 +194,6 @@ func makeRequest[T any](ctx context.Context, httpClient *http.Client, endpoint s
 		return gqlResp, fmt.Errorf("decoding gqlResponse: %w", err)
 	}
 	return gqlResp, nil
-}
-
-// ParseDevURL parses the devURL and returns the Ent dialect as well the Atlas driver name.
-func ParseDevURL(devURL string) (string, string, error) {
-	parsed, err := url.Parse(devURL)
-	if err != nil {
-		return "", "", err
-	}
-	switch strings.ToLower(parsed.Scheme) {
-	case "sqlite", "sqlite3":
-		return dialect.SQLite, "SQLITE", nil
-	case "mysql":
-		return dialect.MySQL, "MYSQL", nil
-	case "postgres":
-		return dialect.Postgres, "POSTGRESQL", nil
-	}
-	return "", "", fmt.Errorf("unknow dialect: %s", parsed.Scheme)
 }
 
 const (
