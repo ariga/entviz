@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: dev
+      POSTGRES_PASSWORD: pass
+    healthcheck:
+      test: pg_isready -U postgres
+  mysql:
+    image: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: dev
+      MYSQL_ROOT_PASSWORD: pass
+    healthcheck:
+      test: mysqladmin ping -ppass
