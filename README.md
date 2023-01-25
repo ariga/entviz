@@ -1,6 +1,9 @@
 # entviz
 
-Visualize Ent schemas with beautiful ERDs on atlasgo.cloud
+Visualize [Ent](https://entgo.io) schemas with beautiful ERDs on [atlasgo.cloud](https://gh.atlasgo.cloud/explore).
+
+![image](https://user-images.githubusercontent.com/1522681/214566936-37f0eb02-30d0-4ea9-8b29-8b71c1bdbc0d.png)
+
 
 ## Usage
 
