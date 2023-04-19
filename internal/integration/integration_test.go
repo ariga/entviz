@@ -74,14 +74,28 @@ schema "public" {
 func TestIntegrationSQLite(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	hclDocument, err := entviz.HCL(ctx, entviz.HCLOptions{
-		SchemaPath:     "./testdata/ent/schema",
-		Dialect:        dialect.SQLite,
-		DevURL:         "sqlite3://file?mode=memory&cache=shared&_fk=1",
-		GlobalUniqueID: false,
+	t.Run("valid schema", func(t *testing.T) {
+		t.Parallel()
+		hclDocument, err := entviz.HCL(ctx, entviz.HCLOptions{
+			SchemaPath:     "./testdata/ent/schema",
+			Dialect:        dialect.SQLite,
+			DevURL:         "sqlite3://file?mode=memory&cache=shared&_fk=1",
+			GlobalUniqueID: false,
+		})
+		require.NoError(t, err)
+		require.Equal(t, testSQLiteHCL, string(hclDocument))
 	})
-	require.NoError(t, err)
-	require.Equal(t, testSQLiteHCL, string(hclDocument))
+	t.Run("missing schema type", func(t *testing.T) {
+		t.Parallel()
+		_, err := entviz.HCL(ctx, entviz.HCLOptions{
+			SchemaPath:     "./testdata/schema-type/schema",
+			Dialect:        dialect.SQLite,
+			DevURL:         "sqlite3://file?mode=memory&cache=shared&_fk=1",
+			GlobalUniqueID: false,
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "sqlite3: schema type for column users.create_time not defined")
+	})
 }
 
 func TestIntegrationMySQL(t *testing.T) {

@@ -18,6 +18,7 @@ import (
 	"entgo.io/ent/dialect/sql/schema"
 	"entgo.io/ent/entc"
 	"entgo.io/ent/entc/gen"
+	"entgo.io/ent/schema/field"
 	"github.com/Khan/genqlient/graphql"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -79,6 +80,13 @@ func HCL(ctx context.Context, hclOpts HCLOptions) ([]byte, error) {
 	tbl, err := graph.Tables()
 	if err != nil {
 		return nil, fmt.Errorf("reading tables: %w", err)
+	}
+	for _, tb := range tbl {
+		for _, cl := range tb.Columns {
+			if cl.Type == field.TypeOther && cl.SchemaType[hclOpts.Dialect] == "" {
+				return nil, fmt.Errorf("%s: schema type for column %s.%s not defined", hclOpts.Dialect, tb.Name, cl.Name)
+			}
+		}
 	}
 	if err := mig.Create(ctx, tbl...); err != nil && !errors.Is(err, errSkip) {
 		return nil, fmt.Errorf("creating schema: %w", err)
